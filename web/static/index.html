@@ -1,0 +1,144 @@
+<!DOCTYPE html>
+<html lang="ru">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<title>Telegram Suite Web</title>
+<style>
+  :root { --bg:#0f1115; --card:#171a21; --border:#232833; --text:#e6e9ef; --muted:#8b93a7; --accent:#4f8cff; --ok:#3ddc84; --warn:#ffb020; --err:#ff5c5c; }
+  * { box-sizing:border-box; }
+  body { margin:0; font-family:system-ui,-apple-system,"Segoe UI",Roboto,sans-serif; background:var(--bg); color:var(--text); }
+  header { padding:18px 28px; border-bottom:1px solid var(--border); display:flex; align-items:center; gap:14px; }
+  header h1 { font-size:18px; margin:0; }
+  .badge { font-size:12px; color:var(--muted); border:1px solid var(--border); padding:3px 10px; border-radius:20px; }
+  main { padding:24px 28px; display:grid; grid-template-columns:1fr 1fr; gap:20px; max-width:1200px; margin:0 auto; }
+  .card { background:var(--card); border:1px solid var(--border); border-radius:12px; padding:18px; }
+  .card h2 { font-size:13px; text-transform:uppercase; letter-spacing:.06em; color:var(--muted); margin:0 0 12px; }
+  .row { display:flex; justify-content:space-between; align-items:center; gap:10px; padding:8px 0; border-bottom:1px solid var(--border); font-size:14px; }
+  .row:last-child { border-bottom:none; }
+  .pill { font-size:12px; padding:2px 10px; border-radius:20px; white-space:nowrap; }
+  .pill.ok { background:#123524; color:var(--ok); }
+  .pill.banned,.pill.dead { background:#3a1416; color:var(--err); }
+  .pill.flood { background:#3a2a10; color:var(--warn); }
+  .pill.unknown,.pill.error { background:#232833; color:var(--muted); }
+  button { background:var(--accent); color:#fff; border:none; border-radius:8px; padding:9px 16px; font-size:14px; cursor:pointer; }
+  button.ghost { background:transparent; border:1px solid var(--border); color:var(--text); }
+  button:disabled { opacity:.5; cursor:not-allowed; }
+  textarea, input[type=text] { width:100%; background:#0f1115; border:1px solid var(--border); color:var(--text); border-radius:8px; padding:10px; font-size:14px; font-family:inherit; }
+  textarea { min-height:90px; resize:vertical; }
+  .actions { display:flex; gap:10px; margin-top:12px; flex-wrap:wrap; }
+  .muted { color:var(--muted); font-size:12px; }
+  .event { font-size:12px; padding:4px 0; border-bottom:1px dashed var(--border); font-family:ui-monospace,monospace; word-break:break-word; }
+  .event .lvl { font-weight:600; }
+  .lvl.info { color:var(--ok); } .lvl.warn { color:var(--warn); } .lvl.error { color:var(--err); }
+  .full { grid-column:1 / -1; }
+  #toast { position:fixed; bottom:20px; right:20px; background:var(--card); border:1px solid var(--border); padding:12px 18px; border-radius:10px; display:none; max-width:340px; }
+  .inline { display:flex; gap:8px; }
+  .inline input { flex:1; }
+</style>
+</head>
+<body>
+<header>
+  <h1>🦖 Telegram Suite Web</h1>
+  <span class="badge" id="apiBadge">API: —</span>
+  <span class="badge" id="taskBadge"></span>
+</header>
+<main>
+  <div class="card">
+    <h2>Модули</h2>
+    <div id="modules"></div>
+  </div>
+  <div class="card">
+    <h2>Аккаунты</h2>
+    <div id="accounts"></div>
+    <div class="actions"><button id="btnCheck">Проверить аккаунты</button></div>
+  </div>
+  <div class="card full">
+    <h2>Рассылка (broadcast — только opt-in)</h2>
+    <textarea id="msg" placeholder="Текст сообщения… можно использовать {username}"></textarea>
+    <div class="actions">
+      <button id="btnPreview" class="ghost">Предпросмотр (dry-run)</button>
+      <button id="btnSend">Отправить</button>
+    </div>
+    <div id="preview" class="muted" style="margin-top:10px"></div>
+  </div>
+  <div class="card">
+    <h2>Подписчики (opt-in)</h2>
+    <div id="subscribers" class="muted"></div>
+  </div>
+  <div class="card">
+    <h2>Opt-out</h2>
+    <div id="optout" class="muted" style="margin-bottom:10px"></div>
+    <div class="inline">
+      <input type="text" id="optoutKey" placeholder="@username или id">
+      <button id="btnOptout" class="ghost">Добавить</button>
+    </div>
+  </div>
+  <div class="card full">
+    <h2>Журнал</h2>
+    <div id="events"></div>
+  </div>
+</main>
+<div id="toast"></div>
+<script>
+const $ = s => document.querySelector(s);
+let taskTimer = null;
+
+function toast(msg){ const t=$('#toast'); t.textContent=msg; t.style.display='block'; setTimeout(()=>t.style.display='none',4000); }
+
+async function api(path, opts={}){
+  const r = await fetch(path, {headers:{'Content-Type':'application/json'}, ...opts});
+  if(!r.ok){ const e = await r.json().catch(()=>({detail:r.statusText})); throw new Error(e.detail||r.statusText); }
+  return r.json();
+}
+
+async function loadOverview(){
+  try {
+    const d = await api('/api/overview');
+    $('#apiBadge').textContent = d.api_id_set ? 'API: настроен' : 'API: не настроен';
+    $('#modules').innerHTML = d.modules.map(m=>`<div class="row"><span>${m.name}</span><span class="muted">${m.description}</span></div>`).join('') || '<div class="muted">нет модулей</div>';
+    $('#accounts').innerHTML = d.accounts.map(a=>`<div class="row"><span>${a.name}</span><span class="pill ${a.status}">${a.status}</span></div>`).join('') || '<div class="muted">нет сессий</div>';
+    $('#events').innerHTML = d.events.map(e=>`<div class="event"><span class="lvl ${e.level}">${e.level}</span> ${e.ts} · ${e.module||''} · ${e.message}</div>`).join('') || '<div class="muted">пока пусто</div>';
+  } catch(e){ toast(e.message); }
+}
+
+async function loadBroadcast(){
+  try {
+    const d = await api('/api/broadcast/state');
+    $('#subscribers').innerHTML = d.subscribers.map(s=>`<div>${s.key} <span class="muted">(${s.consent}, ${s.source})</span></div>`).join('') || 'нет подписчиков';
+    $('#optout').innerHTML = d.optout.map(k=>`<div>${k}</div>`).join('') || 'пусто';
+  } catch(e){ $('#subscribers').textContent = 'ошибка: '+e.message; }
+}
+
+function pollTask(id){
+  clearInterval(taskTimer);
+  taskTimer = setInterval(async ()=>{
+    try {
+      const t = await api('/api/tasks/'+id);
+      $('#taskBadge').textContent = t.type+' … '+t.status;
+      if(t.status==='done'){ clearInterval(taskTimer); toast('Задача завершена'); $('#taskBadge').textContent=''; loadOverview(); loadBroadcast(); }
+      if(t.status==='error'){ clearInterval(taskTimer); toast('Ошибка: '+t.error); $('#taskBadge').textContent=''; }
+    } catch(e){ clearInterval(taskTimer); }
+  }, 1500);
+}
+
+$('#btnCheck').onclick = async ()=>{ try{ const r=await api('/api/checker',{method:'POST'}); toast('Чекер запущен'); pollTask(r.task_id); }catch(e){ toast(e.message); } };
+$('#btnPreview').onclick = async ()=>{
+  try{
+    const r=await api('/api/broadcast/preview',{method:'POST',body:JSON.stringify({message:$('#msg').value})});
+    $('#preview').innerHTML = `Получателей: <b>${r.count}</b><br>` + r.recipients.map(x=>`${x.key} (${x.consent})`).join('<br>');
+  }catch(e){ toast(e.message); }
+};
+$('#btnSend').onclick = async ()=>{
+  if(!confirm('Отправить реально? Это выполнит рассылку по opt-in подписчикам.')) return;
+  try{ const r=await api('/api/broadcast/send',{method:'POST',body:JSON.stringify({message:$('#msg').value})}); toast('Рассылка запущена: '+r.recipients+' получателей'); pollTask(r.task_id); }catch(e){ toast(e.message); }
+};
+$('#btnOptout').onclick = async ()=>{
+  const k=$('#optoutKey').value.trim(); if(!k) return;
+  try{ await api('/api/broadcast/unsubscribe',{method:'POST',body:JSON.stringify({key:k})}); $('#optoutKey').value=''; toast('Добавлено в opt-out'); loadBroadcast(); }catch(e){ toast(e.message); }
+};
+
+loadOverview(); loadBroadcast();
+</script>
+</body>
+</html>

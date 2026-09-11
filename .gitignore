@@ -1,0 +1,12 @@
+# окружение и секреты
+.env
+*.session
+
+# данные и кэш
+sessions/
+data/
+demo/
+__pycache__/
+*.pyc
+.venv/
+dist/
