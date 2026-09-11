@@ -174,6 +174,26 @@ def create_app(settings: Settings) -> FastAPI:
         _broadcast_plugin()._add_optout(key)
         return {"ok": True}
 
+    # ---------------- спинтакс --------------
+    @app.post("/api/spintax/preview")
+    async def spintax_preview(payload: dict):
+        from core import spintax
+
+        text = (payload.get("text") or "").strip()
+        if not text:
+            raise HTTPException(400, "пустой текст")
+        if not spintax.has_spintax(text):
+            return {"has_spintax": False, "combinations": 1, "sample": [text]}
+        try:
+            combos = spintax.count_combinations(text)
+        except spintax.SpintaxError as exc:
+            raise HTTPException(400, str(exc)) from exc
+        return {
+            "has_spintax": True,
+            "combinations": combos,
+            "sample": spintax.sample_variants(text, 5),
+        }
+
     # ---------------- задачи ----------------
     @app.get("/api/tasks/{task_id}")
     async def task_status(task_id: str):

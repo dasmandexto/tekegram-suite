@@ -44,6 +44,7 @@ from telethon.errors import (
     UsernameNotOccupiedError,
 )
 
+from core import spintax
 from .base import PluginDeps, PluginProtocol
 
 log = logging.getLogger(__name__)
@@ -146,6 +147,15 @@ class BroadcastPlugin(PluginProtocol):
         if not parsed.message:
             self._parser().error("укажите текст сообщения")
 
+        # спинтакс: проверяем корректность ДО любых действий
+        combos = None
+        if spintax.has_spintax(parsed.message):
+            try:
+                combos = spintax.count_combinations(parsed.message)
+            except spintax.SpintaxError as exc:
+                raise ValueError(f"Ошибка спинтакса: {exc}") from exc
+            log.info("Спинтакс: %d комбинаций", combos)
+
         subscribers = self._load_subscribers()
         optout = self._load_optout()
 
@@ -173,7 +183,7 @@ class BroadcastPlugin(PluginProtocol):
             return
 
         if not parsed.send:
-            self._print_plan(subscribers, dropped_optout, parsed.message)
+            self._print_plan(subscribers, dropped_optout, parsed.message, combos)
             log.info("DRY-RUN: отправка не выполнялась. Для реальной отправки добавьте --send.")
             return
 
@@ -192,9 +202,17 @@ class BroadcastPlugin(PluginProtocol):
         self.deps.storage.log_event(MODULE, "info", f"завершено: адресатов={len(subscribers)}")
 
     # ---------------------------------------------------------------- dry-run
-    def _print_plan(self, subscribers: list[tuple[str, str, str]], dropped: int, message: str) -> None:
+    def _print_plan(
+        self,
+        subscribers: list[tuple[str, str, str]],
+        dropped: int,
+        message: str,
+        combos: int | None = None,
+    ) -> None:
         print("┌─ ПЛАН РАССЫЛКИ (dry-run, ничего не отправлено) ─────────────")
         print(f"│ получателей после opt-in: {len(subscribers)}  (в opt-out: {dropped})")
+        if combos is not None:
+            print(f"│ спинтакс: {combos} комбинаций (каждому — случайный вариант)")
         print(f"│ текст: {message[:60]!r}")
         for key, consent, source in subscribers[:10]:
             print(f"│   → {key}  (согласие {consent}, {source})")
@@ -227,7 +245,8 @@ class BroadcastPlugin(PluginProtocol):
                 await self.deps.rate_limiter.wait(name)
                 try:
                     entity = await client.get_entity(key)
-                    text = message.replace("{username}", key)
+                    # спинтакс: каждый получатель получает случайный вариант
+                    text = spintax.generate(message).replace("{username}", key)
                     await client.send_message(entity, text)
                     self.deps.storage.mark_sent(name, key, MODULE)
                     self.deps.storage.log_event(MODULE, "info", f"{name} -> {key}")

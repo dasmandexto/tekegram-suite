@@ -55,12 +55,14 @@
   </div>
   <div class="card full">
     <h2>Рассылка (broadcast — только opt-in)</h2>
-    <textarea id="msg" placeholder="Текст сообщения… можно использовать {username}"></textarea>
+    <textarea id="msg" placeholder="Текст… можно {username} и спинтакс: {привет|здравствуйте}"></textarea>
     <div class="actions">
       <button id="btnPreview" class="ghost">Предпросмотр (dry-run)</button>
+      <button id="btnSpintax" class="ghost">Спинтакс: варианты</button>
       <button id="btnSend">Отправить</button>
     </div>
     <div id="preview" class="muted" style="margin-top:10px"></div>
+    <div id="spintax" class="muted" style="margin-top:8px"></div>
   </div>
   <div class="card">
     <h2>Подписчики (opt-in)</h2>
@@ -129,7 +131,14 @@ $('#btnPreview').onclick = async ()=>{
     $('#preview').innerHTML = `Получателей: <b>${r.count}</b><br>` + r.recipients.map(x=>`${x.key} (${x.consent})`).join('<br>');
   }catch(e){ toast(e.message); }
 };
-$('#btnSend').onclick = async ()=>{
+$('#btnSpintax').onclick = async ()=>{
+  try{
+    const r=await api('/api/spintax/preview',{method:'POST',body:JSON.stringify({text:$('#msg').value})});
+    if(!r.has_spintax){ $('#spintax').innerHTML='Спинтакса нет — текст уйдёт как есть.'; return; }
+    $('#spintax').innerHTML = `Комбинаций: <b>${r.combinations}</b><br>` + r.sample.map((v,i)=>`<div>${i+1}. ${v}</div>`).join('');
+  }catch(e){ toast(e.message); }
+};
+$('#btnSend').onclick = async ()=>{ 
   if(!confirm('Отправить реально? Это выполнит рассылку по opt-in подписчикам.')) return;
   try{ const r=await api('/api/broadcast/send',{method:'POST',body:JSON.stringify({message:$('#msg').value})}); toast('Рассылка запущена: '+r.recipients+' получателей'); pollTask(r.task_id); }catch(e){ toast(e.message); }
 };

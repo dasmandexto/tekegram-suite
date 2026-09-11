@@ -5,6 +5,7 @@
 """
 from __future__ import annotations
 
+import random
 import sys
 import tempfile
 from pathlib import Path
@@ -111,7 +112,21 @@ with tempfile.TemporaryDirectory() as td:
     check("registry: инстанцирован checker", plugin.name == "checker")
     ctx.close()
 
-# ---- 8. Поведение без API-кредов ----
+# ---- 8. Спинтакс ----
+from core import spintax
+
+check("spintax: generate вариант", spintax.generate("{a|b}", random.Random(1)) in ("a", "b"))
+check("spintax: count", spintax.count_combinations("{a|b}-{1|2|3}") == 6)
+check("spintax: вложенность", spintax.count_combinations("{a|{b|c}}") == 3)
+check("spintax: экранирование", spintax.generate(r"\{x\} {a|b}", random.Random(2)) in ("{x} a", "{x} b"))
+try:
+    spintax.count_combinations("{a{b}")
+    check("spintax: ловит непарные", False)
+except spintax.SpintaxError:
+    check("spintax: ловит непарные", True)
+check("spintax: sample_variants", len(spintax.sample_variants("{a|b|c}", 3, seed=1)) == 3)
+
+# ---- 9. Поведение без API-кредов ----
 with tempfile.TemporaryDirectory() as td:
     env = Path(td) / ".env"
     env.write_text(f"SESSIONS_DIR={td}/sessions\nDB_PATH={td}/data/app.db\n", encoding="utf-8")
