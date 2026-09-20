@@ -49,19 +49,24 @@ def parse_targets(path: Path) -> list[str]:
 
 
 def reason_obj(name: str):
-    """Строка -> конструктор причины Telegram (защита от смены API)."""
-    mapping = {
-        "spam": "ReportReasonSpam",
-        "violence": "ReportReasonViolence",
-        "childabuse": "ReportReasonChildAbuse",
-        "pornography": "ReportReasonPornography",
-        "copyright": "ReportReasonCopyright",
-        "other": "ReportReasonOther",
+    """Строка -> конструктор причины Telegram (защита от смены API).
+
+    В разных версиях Telethon класс называется по-разному:
+    ReportReasonSpam (новые слои) / InputReportReasonSpam (старые).
+    """
+    variants = {
+        "spam": ("InputReportReasonSpam", "ReportReasonSpam"),
+        "violence": ("InputReportReasonViolence", "ReportReasonViolence"),
+        "childabuse": ("InputReportReasonChildAbuse", "ReportReasonChildAbuse"),
+        "pornography": ("InputReportReasonPornography", "ReportReasonPornography"),
+        "copyright": ("InputReportReasonCopyright", "ReportReasonCopyright"),
+        "other": ("InputReportReasonOther", "ReportReasonOther"),
     }
-    cls = getattr(types, mapping[name], None)
-    if cls is None:
-        raise ValueError(f"Текущая версия Telethon не поддерживает причину '{name}'")
-    return cls()
+    for cls_name in variants[name]:
+        cls = getattr(types, cls_name, None)
+        if cls is not None:
+            return cls()
+    raise ValueError(f"Текущая версия Telethon не поддерживает причину '{name}'")
 
 
 class ReporterPlugin(PluginProtocol):

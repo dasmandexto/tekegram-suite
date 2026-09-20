@@ -238,7 +238,8 @@ with tempfile.TemporaryDirectory() as td:
     tf.write_text("@spam_channel\n# коммент\nhttps://t.me/scam\n@spam_channel\n", encoding="utf-8")
     check("reporter: цели + дедуп", parse_targets(tf) == ["@spam_channel", "https://t.me/scam"])
     r = reason_obj("spam")
-    check("reporter: причина spam", type(r).__name__ == "ReportReasonSpam")
+    check("reporter: причина spam", type(r).__name__ in ("ReportReasonSpam", "InputReportReasonSpam"),
+          f"({type(r).__name__})")
 
 check("booster: ссылка на пост", parse_post_link("https://t.me/my_channel/123") == ("my_channel", 123))
 check("booster: t.me/s/ ссылка", parse_post_link("https://t.me/s/channel/456") == ("channel", 456))
