@@ -9,6 +9,7 @@
 """
 from __future__ import annotations
 
+import json
 import sqlite3
 import threading
 from pathlib import Path
@@ -43,6 +44,11 @@ class Storage:
                     user_key   TEXT NOT NULL,   -- @username / user_id / телефон
                     sent_at    TEXT NOT NULL DEFAULT (datetime('now')),
                     PRIMARY KEY (account, module, user_key)
+                );
+
+                CREATE TABLE IF NOT EXISTS module_configs (
+                    module     TEXT PRIMARY KEY,
+                    config     TEXT NOT NULL DEFAULT '{}'
                 );
 
                 CREATE TABLE IF NOT EXISTS events (
@@ -134,6 +140,26 @@ class Storage:
                 (account, module),
             ).fetchone()
         return row["c"]
+
+    # ---------- настройки модулей (как в TeleRaptor: у каждого свои) ----------
+    def get_module_config(self, module: str) -> dict:
+        with self._lock:
+            row = self._conn.execute(
+                "SELECT config FROM module_configs WHERE module = ?", (module,)
+            ).fetchone()
+        if not row:
+            return {}
+        try:
+            return json.loads(row["config"])
+        except (json.JSONDecodeError, TypeError):
+            return {}
+
+    def set_module_config(self, module: str, config: dict) -> None:
+        with self._lock, self._conn:
+            self._conn.execute(
+                "INSERT OR REPLACE INTO module_configs (module, config) VALUES (?, ?)",
+                (module, json.dumps(config, ensure_ascii=False)),
+            )
 
     def recent_events(self, limit: int = 50) -> list[dict]:
         """Последние события журнала (для веб-интерфейса), новые сверху."""

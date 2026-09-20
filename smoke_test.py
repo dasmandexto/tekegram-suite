@@ -249,7 +249,36 @@ try:
 except ValueError:
     check("booster: мусор -> ошибка", True)
 
-# ---- 12. Поведение без API-кредов ----
+# ---- 13. Схемы модулей и рантайм argv (единый конфиг в стиле TeleRaptor) ----
+from core.schemas import MODULE_SCHEMAS, build_argv, validate_schema_module
+
+problems = [p for n, s in MODULE_SCHEMAS.items() for p in validate_schema_module(n, s)]
+check("schemas: все 12 схем валидны", not problems and len(MODULE_SCHEMAS) == 12, f"({problems or 'ok'})")
+
+# обязательные поля -> ошибка
+try:
+    build_argv(MODULE_SCHEMAS["broadcast"], {})
+    check("schemas: broadcast без текста -> ошибка", False)
+except ValueError:
+    check("schemas: broadcast без текста -> ошибка", True)
+
+# dry-run по умолчанию
+argv_dry, real_dry = build_argv(MODULE_SCHEMAS["broadcast"], {"message": "Привет"})
+check("schemas: dry-run по умолчанию", real_dry is False and argv_dry == ["Привет"])
+
+# реальный запуск + числовые и опциональные поля
+argv_real, real_real = build_argv(
+    MODULE_SCHEMAS["broadcast"], {"message": "Привет", "send": True, "limit": 50}
+)
+check("schemas: real + limit", real_real is True and argv_real == ["Привет", "--limit", "50", "--send"])
+
+# позиционные (parser source) и bool (cloner no-media)
+argv_p, _ = build_argv(MODULE_SCHEMAS["parser"], {"source": "@durov", "mode": "activity"})
+check("schemas: parser positional+mode", argv_p == ["@durov", "--mode", "activity"])
+argv_b, _ = build_argv(MODULE_SCHEMAS["cloner"], {"source": "@s", "target": "@t", "no_media": True})
+check("schemas: cloner bool flag", argv_b == ["@s", "@t", "--no_media"])
+
+# -- 14. Поведение без API-кредов --
 with tempfile.TemporaryDirectory() as td:
     env = Path(td) / ".env"
     env.write_text(f"SESSIONS_DIR={td}/sessions\nDB_PATH={td}/data/app.db\n", encoding="utf-8")

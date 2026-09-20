@@ -18,6 +18,7 @@ from fastapi.staticfiles import StaticFiles
 
 from config import Settings
 from core import Context
+from core.schemas import MODULE_SCHEMAS, build_argv, validate_schema_module
 from plugins import PluginDeps, get_registry
 
 log = logging.getLogger(__name__)
@@ -331,6 +332,77 @@ def create_app(settings: Settings) -> FastAPI:
             payload, flags=("send", "limit", "reaction"), positional=("post",), required=("post",)
         )
         return _spawn_task("booster", registry.instantiate("booster", _build_deps(ctx, settings)), argv)
+
+    # ---------------- единый рантайм модулей (схемы + настройки) ----------------
+    schema_problems = [p for n, s in MODULE_SCHEMAS.items() for p in validate_schema_module(n, s)]
+    if schema_problems:
+        log.error("Проблемы в схемах модулей: %s", "; ".join(schema_problems))
+
+    @app.get("/api/schemas")
+    async def get_schemas():
+        """Схемы всех модулей + сохранённые настройки (для авто-форм UI)."""
+        return {
+            name: {
+                **schema,
+                "saved_config": ctx.storage.get_module_config(name),
+                "registered": registry.get(name) is not None,
+            }
+            for name, schema in MODULE_SCHEMAS.items()
+        }
+
+    @app.get("/api/config/{module}")
+    async def get_config(module: str):
+        if module not in MODULE_SCHEMAS:
+            raise HTTPException(404, "нет такого модуля")
+        return {"module": module, "config": ctx.storage.get_module_config(module)}
+
+    @app.post("/api/config/{module}")
+    async def save_config(module: str, payload: dict):
+        if module not in MODULE_SCHEMAS:
+            raise HTTPException(404, "нет такого модуля")
+        schema = MODULE_SCHEMAS[module]
+        allowed = {f["key"] for f in schema["fields"]}
+        clean = {k: v for k, v in (payload or {}).items() if k in allowed}
+        try:
+            build_argv(schema, clean)  # валидация обязательных полей
+        except ValueError as exc:
+            raise HTTPException(400, str(exc)) from exc
+        ctx.storage.set_module_config(module, clean)
+        ctx.storage.log_event("config", "info", f"настройки сохранены: {module}")
+        return {"ok": True, "saved": clean}
+
+    @app.post("/api/run/{module}")
+    async def run_module(module: str, payload: dict):
+        """Единая точка запуска: схема -> argv -> фоновая задача.
+
+        Dry-run по умолчанию: real-запуск только если в payload передан
+        send_flag=true (для модулей с send_flag).
+        """
+        schema = MODULE_SCHEMAS.get(module)
+        if not schema:
+            raise HTTPException(404, "нет такого модуля")
+        if not registry.get(module):
+            raise HTTPException(500, "модуль не зарегистрирован в реестре")
+        if schema.get("interactive"):
+            raise HTTPException(400, "модуль интерактивный — запустите через CLI: python -m cli " + module)
+        if schema.get("api_required") and not (settings.api_id and settings.api_hash):
+            raise HTTPException(400, "нужны API_ID и API_HASH (my.telegram.org)")
+        if schema.get("api_required") and not ctx.sessions.list_session_names():
+            raise HTTPException(400, "нет сессий в каталоге sessions/")
+        # значения формы: payload -> сохранённые настройки -> default из схемы
+        saved = ctx.storage.get_module_config(module)
+        merged = {
+            f["key"]: payload.get(f["key"], saved.get(f["key"], f.get("default")))
+            for f in schema["fields"]
+        }
+        merged[schema["send_flag"]] = bool(payload.get(schema["send_flag"])) if schema.get("send_flag") else False
+        try:
+            argv, real = build_argv(schema, merged)
+        except ValueError as exc:
+            raise HTTPException(400, str(exc)) from exc
+        task = _spawn_task(module, registry.instantiate(module, _build_deps(ctx, settings)), argv)
+        task["real_run"] = real
+        return task
 
     @app.get("/api/tasks/{task_id}")
     async def task_status(task_id: str):
