@@ -1,5 +1,10 @@
 # Telegram Suite — модульный набор инструментов для Telegram
 
+![Python](https://img.shields.io/badge/python-3.10%2B-blue)
+![Telethon](https://img.shields.io/badge/telethon-1.45-green)
+![License](https://img.shields.io/badge/license-MIT-yellow)
+![Tests](https://img.shields.io/badge/smoke--tests-89%20pass-brightgreen)
+
 Проектирование по мотивам сервиса **TeleRaptor** (try.teleraptor.ru): рассылки,
 парсинг, инвайтинг, автоматизация. Архитектура модульная: каждый модуль —
 отдельный файл в `plugins/`, подключается автоматически через реестр.
