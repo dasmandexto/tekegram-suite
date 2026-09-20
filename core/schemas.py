@@ -30,7 +30,7 @@ MODULE_SCHEMAS: dict[str, dict] = {
             {"key": "limit", "label": "Лимит адресатов за запуск (0 = все)", "type": "number", "default": 0},
             {"key": "recipient", "label": "Только одному адресату (пусто = всем opt-in)", "type": "text", "default": ""},
         ],
-        "positional": [],
+        "positional": ["message"],
         "send_flag": "send",
         "api_required": True,
     },
@@ -150,9 +150,10 @@ def build_argv(schema: dict, values: dict) -> tuple[list[str], bool]:
     """Собирает argv для CLI-плагина из значений формы (схема -> аргументы).
 
     Возвращает (argv, real_run): real_run=True, если передан send_flag.
-    Позиционные поля идут без флага, bool=True — как голый флаг,
-    пустые/False — пропускаются (модуль возьмёт свой default).
-    Бросает ValueError при незаполненном обязательном поле.
+    Позиционные поля идут без флага, bool=True — как голый флаг (дефисы:
+    no_media -> --no-media), значения, равные default, не тащатся в argv
+    (плагин возьмёт тот же default). Бросает ValueError при незаполненном
+    обязательном поле.
     """
     send_flag = schema.get("send_flag")
     real = bool(values.get(send_flag)) if send_flag else False
@@ -170,9 +171,11 @@ def build_argv(schema: dict, values: dict) -> tuple[list[str], bool]:
         if key in positional:
             argv.append(str(val))
         elif field["type"] == "bool":
-            argv.append(f"--{key}")
+            argv.append(f"--{key.replace('_', '-')}")
+        elif not field.get("required") and val == field.get("default"):
+            continue  # значение = default: плагин применит то же самое
         else:
-            argv += [f"--{key}", str(val)]
+            argv += [f"--{key.replace('_', '-')}", str(val)]
     if send_flag and real:
         argv.append(f"--{send_flag}")
     return argv, real
@@ -189,8 +192,7 @@ def validate_schema_module(name: str, schema: dict) -> list[str]:
     for key in schema.get("positional", []):
         if key not in keys:
             problems.append(f"{name}: positional '{key}' нет в fields")
-    if schema.get("send_flag") and schema["send_flag"] not in keys:
-        problems.append(f"{name}: send_flag '{schema['send_flag']}' нет в fields")
+    # send_flag — служебный флаг реального запуска, в fields его сознательно нет
     for f in schema.get("fields", []):
         if f["type"] == "select" and not f.get("options"):
             problems.append(f"{name}: select '{f['key']}' без options")

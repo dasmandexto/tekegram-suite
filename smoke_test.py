@@ -276,7 +276,7 @@ check("schemas: real + limit", real_real is True and argv_real == ["Привет
 argv_p, _ = build_argv(MODULE_SCHEMAS["parser"], {"source": "@durov", "mode": "activity"})
 check("schemas: parser positional+mode", argv_p == ["@durov", "--mode", "activity"])
 argv_b, _ = build_argv(MODULE_SCHEMAS["cloner"], {"source": "@s", "target": "@t", "no_media": True})
-check("schemas: cloner bool flag", argv_b == ["@s", "@t", "--no_media"])
+check("schemas: cloner bool flag", argv_b == ["@s", "@t", "--no-media"])
 
 # -- 14. Поведение без API-кредов --
 with tempfile.TemporaryDirectory() as td:
