@@ -157,7 +157,11 @@ api_id, api_hash) — вся инфраструктура уже готова.
 | Клонер чатов                 | `plugins/cloner.py` — готов (мета+история, карта id, замены) |
 | Автоответчик                 | `plugins/autoresponder.py` — готов (кулдаун, анти-петля) |
 | Чекер номеров                | `plugins/phone_checker.py` — готов (E.164, батчи, без SMS) |
-| Конвертер tdata → session    | TODO                         |
+| Конвертер tdata → session    | `plugins/tdata_converter.py` — готов (через opentele)       |
+| Заполнение профилей          | `plugins/profiler.py` — готов (имя/био/юзернейм/аватар, dry-run) |
+| Репортер                     | `plugins/reporter.py` — каркас (жалобы, макс. 25/запуск)     |
+| Накрутка (просмотры/реакции) | `plugins/booster.py` — каркас (только свой пост, макс. 200)  |
+| Регистратор                  | `plugins/registrator.py` — каркас (один свой номер, ручной код) |
 
 ## Публикация на GitHub
 

@@ -205,7 +205,50 @@ with tempfile.TemporaryDirectory() as td:
     check("autoresponder: кулдаун считается", sec is not None and sec < 5, f"({sec})")
     st2.close()
 
-# ---- 11. Поведение без API-кредов ----
+# ---- 11. Профили / tdata / репортер / накрутка (без сети: хелперы) ----
+from plugins.profiler import parse_profiles
+from plugins.tdata_converter import find_tdata_dirs
+from plugins.reporter import parse_targets, reason_obj
+from plugins.booster import parse_post_link
+
+with tempfile.TemporaryDirectory() as td:
+    pf = _Path(td) / "profiles.txt"
+    pf.write_text(
+        "acc1|Иван|Иванов|Менеджер|ivan_m\n# коммент\n\n|нет_аккаунта\nacc2|||\n",
+        encoding="utf-8",
+    )
+    profs = parse_profiles(pf)
+    check("profiler: парсинг профилей", len(profs) == 2 and profs[0]["first_name"] == "Иван")
+    check("profiler: пустые поля пусты", profs[1]["first_name"] == "")
+
+with tempfile.TemporaryDirectory() as td:
+    td_root = _Path(td) / "acc1" / "tdata"
+    td_root.mkdir(parents=True)
+    (td_root / "key_datas").write_text("x", encoding="utf-8")
+    found = find_tdata_dirs(_Path(td))
+    check("tdata: найден каталог", found == [td_root], f"({found})")
+    try:
+        find_tdata_dirs(_Path(td) / "nope")
+        check("tdata: нет каталога -> ошибка", False)
+    except ValueError:
+        check("tdata: нет каталога -> ошибка", True)
+
+with tempfile.TemporaryDirectory() as td:
+    tf = _Path(td) / "targets.txt"
+    tf.write_text("@spam_channel\n# коммент\nhttps://t.me/scam\n@spam_channel\n", encoding="utf-8")
+    check("reporter: цели + дедуп", parse_targets(tf) == ["@spam_channel", "https://t.me/scam"])
+    r = reason_obj("spam")
+    check("reporter: причина spam", type(r).__name__ == "ReportReasonSpam")
+
+check("booster: ссылка на пост", parse_post_link("https://t.me/my_channel/123") == ("my_channel", 123))
+check("booster: t.me/s/ ссылка", parse_post_link("https://t.me/s/channel/456") == ("channel", 456))
+try:
+    parse_post_link("не ссылка")
+    check("booster: мусор -> ошибка", False)
+except ValueError:
+    check("booster: мусор -> ошибка", True)
+
+# ---- 12. Поведение без API-кредов ----
 with tempfile.TemporaryDirectory() as td:
     env = Path(td) / ".env"
     env.write_text(f"SESSIONS_DIR={td}/sessions\nDB_PATH={td}/data/app.db\n", encoding="utf-8")

@@ -303,6 +303,35 @@ def create_app(settings: Settings) -> FastAPI:
         )
         return _spawn_task("phonechecker", registry.instantiate("phonechecker", _build_deps(ctx, settings)), argv)
 
+    @app.post("/api/profiler/run")
+    async def profiler_run(payload: dict):
+        if payload.get("send") is not True:
+            raise HTTPException(400, "безопасный режим: передайте send=true для применения")
+        argv = _argv_from_payload(payload, flags=("send", "file", "avatar-dir"), required=())
+        return _spawn_task("profiler", registry.instantiate("profiler", _build_deps(ctx, settings)), argv)
+
+    @app.post("/api/reporter/run")
+    async def reporter_run(payload: dict):
+        if not settings.api_id or not settings.api_hash:
+            raise HTTPException(400, "нужны API_ID и API_HASH")
+        if payload.get("send") is not True:
+            raise HTTPException(400, "безопасный режим: передайте send=true для отправки жалоб")
+        argv = _argv_from_payload(
+            payload, flags=("send", "file", "reason", "comment", "limit"), required=()
+        )
+        return _spawn_task("reporter", registry.instantiate("reporter", _build_deps(ctx, settings)), argv)
+
+    @app.post("/api/booster/run")
+    async def booster_run(payload: dict):
+        if not settings.api_id or not settings.api_hash:
+            raise HTTPException(400, "нужны API_ID и API_HASH")
+        if payload.get("send") is not True:
+            raise HTTPException(400, "безопасный режим: передайте send=true для выполнения")
+        argv = _argv_from_payload(
+            payload, flags=("send", "limit", "reaction"), positional=("post",), required=("post",)
+        )
+        return _spawn_task("booster", registry.instantiate("booster", _build_deps(ctx, settings)), argv)
+
     @app.get("/api/tasks/{task_id}")
     async def task_status(task_id: str):
         task = _tasks.get(task_id)
