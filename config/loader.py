@@ -16,8 +16,10 @@ except ImportError:  # pragma: no cover — dev-без dotenv
 
 
 def _load_env_file(path: Path | None) -> None:
-    if path is not None and path.exists() and load_dotenv is not None:
-        load_dotenv(path)
+    # По умолчанию — .env из текущего каталога (как ожидает CLI и install.sh).
+    target = path if path is not None else Path(".env")
+    if target.exists() and load_dotenv is not None:
+        load_dotenv(target)
 
 
 @dataclass(slots=True)
