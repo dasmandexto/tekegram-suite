@@ -109,6 +109,14 @@ def main(argv: list[str] | None = None) -> int:
         return 0
     except Exception as exc:  # noqa: BLE001 — печатаем причину и выходим с кодом
         print(f"Ошибка: {exc}")
+        if "API_ID" in str(exc):
+            # Самодиагностика: показываем, где искали .env и что видели.
+            print("\nДиагностика конфигурации (где искали .env / config.ini):")
+            for line in settings.env_report:
+                print(f"  {line}")
+            print("  → впишите ключи в .env в каталоге проекта, формат:")
+            print("    API_ID=12345678")
+            print("    API_HASH=abcdef0123456789abcdef0123456789")
         return 1
     finally:
         ctx.close()
