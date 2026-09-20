@@ -3,11 +3,14 @@
 Синтаксис:
     {вариант1|вариант2|вариант3}
     вложенность:   {привет|здравствуйте, {друг|приятель}}
-    экранирование: \{ \} — литеральные скобки в тексте
+    экранирование: \\{ \\} — литеральные скобки в тексте
+
+Подсчёт комбинаций корректно обрабатывает вложенность:
+    count_combinations("{a|b}-{1|2}")   == 4   (независимые группы: произведение)
+    count_combinations("{a|{b|c}}")     == 3   (вложенная группа: сумма ветвей)
 
 Примеры:
     generate("Привет, {User|Друг}!")   -> "Привет, User!" или "Привет, Друг!"
-    count_combinations("{a|b}-{1|2|3}") -> 6
 """
 from __future__ import annotations
 
@@ -23,6 +26,8 @@ class SpintaxError(ValueError):
 
 # самая внутренняя группа {...}: без скобок внутри
 _INNER_RE = re.compile(r"\{([^{}]*)\}")
+# плейсхолдеры заменённых групп: "\x02N", где N — индекс веса
+_PH_RE = re.compile(r"\x02(\d+)")
 
 _ESC_OPEN = "\x00"
 _ESC_CLOSE = "\x01"
@@ -41,24 +46,43 @@ def has_spintax(text: str) -> bool:
     return "{" in text or "}" in text
 
 
+def _part_combos(part: str, weights: dict[int, int]) -> int:
+    """Число комбинаций фрагмента варианта (литералы + плейсхолдеры)."""
+    found = _PH_RE.findall(part)
+    if not found:
+        return 1
+    prod = 1
+    for n in found:
+        prod *= weights[int(n)]
+    return prod
+
+
 def count_combinations(text: str) -> int:
-    """Число всех возможных комбинаций (с учётом вложенности).
+    """Число всех возможных комбинаций, с корректной вложенностью.
+
+    Идея: раскрываем группы от самых внутренних, заменяя каждую на
+    плейсхолдер с «весом». Вес группы = сумма весов её вариантов
+    (вариант-литерал = 1, вариант с подгруппой = произведение её весов).
+    Итог — вес строки верхнего уровня.
 
     Бросает SpintaxError при непарных скобках или некорректной вложенности.
     """
     t = _protect(text)
     if t.count("{") != t.count("}"):
         raise SpintaxError(f"Непарные скобки в спинтаксе: {text!r}")
-    combos = 1
-    out = t
-    while "{" in out:
-        m = _INNER_RE.search(out)
+
+    weights: dict[int, int] = {}
+    counter = 0
+    while "{" in t:
+        m = _INNER_RE.search(t)
         if m is None:
             raise SpintaxError(f"Некорректная вложенность скобок: {text!r}")
-        choices = m.group(1).split("|")
-        combos *= len(choices)
-        out = out[: m.start()] + _PLACEHOLDER + out[m.end():]
-    return combos
+        body = m.group(1)
+        total = sum(_part_combos(var, weights) for var in body.split("|"))
+        weights[counter] = total
+        t = t[: m.start()] + f"{_PLACEHOLDER}{counter}" + t[m.end():]
+        counter += 1
+    return _part_combos(t, weights)
 
 
 def generate(text: str, rng: random.Random | None = None) -> str:

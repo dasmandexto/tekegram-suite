@@ -195,6 +195,76 @@ def create_app(settings: Settings) -> FastAPI:
         }
 
     # ---------------- задачи ----------------
+    def _spawn_task(task_type: str, plugin, argv: list[str]) -> dict:
+        task_id = uuid.uuid4().hex[:8]
+        _tasks[task_id] = {"status": "running", "type": task_type}
+
+        async def work():
+            try:
+                await plugin.run(argv)
+                _tasks[task_id]["status"] = "done"
+            except SystemExit:  # argparse ошибку отдаёт как SystemExit
+                _tasks[task_id].update(status="error", error="неверные аргументы")
+            except Exception as exc:  # noqa: BLE001
+                _tasks[task_id].update(status="error", error=str(exc))
+
+        asyncio.create_task(work())
+        return {"task_id": task_id}
+
+    def _argv_from_payload(payload: dict, flags: tuple[str, ...], required: tuple[str, ...]):
+        """Собирает argv для плагина из JSON-поля: строки/числа -> значения,
+        булевы флаги -> только при true. Запрещает send без явного true."""
+        argv: list[str] = []
+        for key, value in (payload or {}).items():
+            if value in (None, False):
+                continue
+            if value is True:
+                argv.append(f"--{key}")
+            else:
+                argv += [f"--{key}", str(value)]
+        for flag in flags:  # булевы флаги не принимают значение
+            if f"--{flag}" in argv:
+                i = argv.index(f"--{flag}")
+                del argv[i + 1]
+        for req in required:
+            if f"--{req}" not in argv:
+                raise HTTPException(400, f"не хватает аргумента --{req}")
+        return argv
+
+    @app.post("/api/parser/run")
+    async def parser_run(payload: dict):
+        if not settings.api_id or not settings.api_hash:
+            raise HTTPException(400, "нужны API_ID и API_HASH")
+        if not ctx.sessions.list_session_names():
+            raise HTTPException(400, "нет сессий в каталоге sessions/")
+        argv = _argv_from_payload(payload, flags=("limit", "mode", "source", "output"), required=("source",))
+        return _spawn_task("parser", registry.instantiate("parser", _build_deps(ctx, settings)), argv)
+
+    @app.post("/api/inviter/run")
+    async def inviter_run(payload: dict):
+        if not settings.api_id or not settings.api_hash:
+            raise HTTPException(400, "нужны API_ID и API_HASH")
+        if not ctx.sessions.list_session_names():
+            raise HTTPException(400, "нет сессий в каталоге sessions/")
+        if payload.get("send") is not True:
+            raise HTTPException(400, "безопасный режим: передайте send=true для реального инвайта")
+        argv = _argv_from_payload(payload, flags=("send", "target", "file", "limit"), required=("target", "file"))
+        return _spawn_task("inviter", registry.instantiate("inviter", _build_deps(ctx, settings)), argv)
+
+    @app.post("/api/cloner/run")
+    async def cloner_run(payload: dict):
+        if not settings.api_id or not settings.api_hash:
+            raise HTTPException(400, "нужны API_ID и API_HASH")
+        if not ctx.sessions.list_session_names():
+            raise HTTPException(400, "нет сессий в каталоге sessions/")
+        if payload.get("send") is not True:
+            raise HTTPException(400, "безопасный режим: передайте send=true для реального копирования")
+        argv = _argv_from_payload(
+            payload, flags=("send", "no-media", "no-meta", "source", "target", "history", "replace"),
+            required=("source", "target"),
+        )
+        return _spawn_task("cloner", registry.instantiate("cloner", _build_deps(ctx, settings)), argv)
+
     @app.get("/api/tasks/{task_id}")
     async def task_status(task_id: str):
         task = _tasks.get(task_id)

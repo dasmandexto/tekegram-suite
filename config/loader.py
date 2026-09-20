@@ -39,6 +39,9 @@ class Settings:
     max_concurrency: int = 5
     retry_attempts: int = 3
 
+    # Инвайтер: дневной лимит приглашений на аккаунт
+    invite_daily_cap: int = 40
+
     # Логирование
     log_level: str = "INFO"
 
@@ -49,6 +52,8 @@ class Settings:
             raise ValueError(f"Некорректные задержки: min={self.min_delay_seconds}, max={self.max_delay_seconds}")
         if self.max_concurrency < 1:
             raise ValueError("MAX_CONCURRENCY должен быть >= 1")
+        if self.invite_daily_cap < 1:
+            raise ValueError("INVITE_DAILY_CAP должен быть >= 1")
         self.sessions_dir.mkdir(parents=True, exist_ok=True)
         self.db_path.parent.mkdir(parents=True, exist_ok=True)
 
@@ -72,6 +77,7 @@ def load_settings(env_path: str | Path | None = None, *, require_api: bool = Fal
         max_delay_seconds=float(os.getenv("MAX_DELAY_SECONDS", "90")),
         max_concurrency=int(os.getenv("MAX_CONCURRENCY", "5")),
         retry_attempts=int(os.getenv("RETRY_ATTEMPTS", "3")),
+        invite_daily_cap=int(os.getenv("INVITE_DAILY_CAP", "40")),
         log_level=os.getenv("LOG_LEVEL", "INFO"),
     )
     settings.validate(require_api=require_api)

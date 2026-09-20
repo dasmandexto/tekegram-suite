@@ -70,7 +70,30 @@ python -m cli web                          # веб-интерфейс → http:
 API (JSON) — те же функции, что и у CLI: `/api/overview`, `/api/checker`,
 `/api/broadcast/state`, `/api/broadcast/preview`, `/api/broadcast/send`,
 `/api/broadcast/unsubscribe`, `/api/spintax/preview`,
+`/api/parser/run`, `/api/inviter/run`, `/api/cloner/run`,
 `/api/tasks/{id}` (статус фоновой задачи).
+
+### Парсер, инвайтер, клонер (кратко)
+
+```bash
+# парсер: участники или активность, результат в data/parsed_<источник>_<дата>.txt
+python -m cli parser @durov --limit 500
+python -m cli parser @durov --mode activity --limit 1000
+
+# инвайтер: dry-run по умолчанию; дневной лимит INVITE_DAILY_CAP (по умолч. 40)
+python -m cli inviter @my_chat --file data/parsed_durov_2026-09-20.txt --limit 100
+python -m cli inviter @my_chat --file ... --send
+
+# клонер: мета (название/описание/аватар) + история; карта id = идемпотентность
+python -m cli cloner @source @target --history 100 --send --replace "старая_ссылка=новая"
+```
+
+Инвайтер обрабатывает реальные ошибки Telegram: `FloodWaitError`/`PeerFloodError`
+(аккаунт останавливается до конца запуска), `UserPrivacyRestrictedError`,
+`UserNotMutualContactError`, `UserChannelsTooMuchError`, `UserKickedError` —
+каждое логируется, успешные отмечаются в дедупе (module=inviter), повторный
+запуск продолжает с места остановки. Клонер хранит карту
+`data/cloner_map_<src>_<tgt>.json` — повторный запуск не дублирует сообщения.
 
 ### Рассадка по подписчикам (opt-in)
 
@@ -111,9 +134,9 @@ api_id, api_hash) — вся инфраструктура уже готова.
 | Чекер аккаунтов              | `plugins/checker.py` — готов |
 | Рассылка в ЛС (opt-in)       | `plugins/broadcast.py` — готов |
 | Веб-интерфейс                | `web/` — готов               |
-| Парсер аудитории             | `plugins/parser.py` — TODO   |
-| Инвайтер                     | `plugins/inviter.py` — TODO  |
-| Клонер чатов                 | `plugins/cloner.py` — TODO   |
+| Парсер аудитории             | `plugins/parser.py` — готов (members/activity, батчи по 200) |
+| Инвайтер                     | `plugins/inviter.py` — готов (лимиты в день, дедуп, dry-run) |
+| Клонер чатов                 | `plugins/cloner.py` — готов (мета+история, карта id, замены) |
 | Автоответчик                 | `plugins/autoresponder.py` — TODO |
 | Заполнение профилей          | `plugins/profiler.py` — TODO |
 | Чекер номеров                | TODO                         |

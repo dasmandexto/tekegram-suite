@@ -126,7 +126,38 @@ except spintax.SpintaxError:
     check("spintax: ловит непарные", True)
 check("spintax: sample_variants", len(spintax.sample_variants("{a|b|c}", 3, seed=1)) == 3)
 
-# ---- 9. Поведение без API-кредов ----
+# ---- 9. Парсер / Инвайтер / Клонер (без сети: хелперы) ----
+from pathlib import Path as _Path
+
+from plugins.parser import safe_name
+from plugins.inviter import parse_user_keys
+from plugins.cloner import apply_replaces, load_map, map_path_for, save_map
+
+check("parser: safe_name", safe_name("@Мой Канал!") == "Мой_Канал")
+
+with tempfile.TemporaryDirectory() as td:
+    f = _Path(td) / "parsed.txt"
+    f.write_text(
+        "123456789|@u1|Имя|members\n@user2||Имя2|activity\n# комментарий\n\n111|@x||members\n",
+        encoding="utf-8",
+    )
+    keys = parse_user_keys(f)
+    check("inviter: парсинг файла парсера", keys == ["123456789", "@user2", "111"], f"({keys})")
+    try:
+        parse_user_keys(_Path(td) / "nope.txt")
+        check("inviter: нет файла -> ошибка", False)
+    except ValueError:
+        check("inviter: нет файла -> ошибка", True)
+
+check("cloner: замена слов", apply_replaces("иди в @old и old.ru", ["old=new"]) == "иди в @new и new.ru")
+with tempfile.TemporaryDirectory() as td:
+    mp = map_path_for(_Path(td), "@src", "@tgt")
+    save_map(mp, {"10": 100, "11": 101})
+    check("cloner: карта id (save/load)", load_map(mp) == {"10": 100, "11": 101})
+    mp.write_text("{битый json", encoding="utf-8")
+    check("cloner: битая карта -> пустая", load_map(mp) == {})
+
+# ---- 10. Поведение без API-кредов ----
 with tempfile.TemporaryDirectory() as td:
     env = Path(td) / ".env"
     env.write_text(f"SESSIONS_DIR={td}/sessions\nDB_PATH={td}/data/app.db\n", encoding="utf-8")

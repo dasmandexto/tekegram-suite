@@ -115,6 +115,16 @@ class Storage:
                 (module, level, message),
             )
 
+    def count_sent_today(self, account: str, module: str = "inviter") -> int:
+        """Сколько действий module аккаунт совершил сегодня (дневные лимиты)."""
+        with self._lock:
+            row = self._conn.execute(
+                "SELECT COUNT(*) AS c FROM sent_recipients "
+                "WHERE account = ? AND module = ? AND date(sent_at) = date('now')",
+                (account, module),
+            ).fetchone()
+        return row["c"]
+
     def recent_events(self, limit: int = 50) -> list[dict]:
         """Последние события журнала (для веб-интерфейса), новые сверху."""
         with self._lock:
