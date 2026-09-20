@@ -115,6 +115,16 @@ class Storage:
                 (module, level, message),
             )
 
+    def seconds_since(self, account: str, module: str, user_key: str) -> float | None:
+        """Сколько секунд прошло с последнего действия (кулдауны); None — никогда."""
+        with self._lock:
+            row = self._conn.execute(
+                "SELECT CAST(strftime('%s','now') - strftime('%s', sent_at) AS INTEGER) AS s "
+                "FROM sent_recipients WHERE account = ? AND module = ? AND user_key = ?",
+                (account, module, user_key),
+            ).fetchone()
+        return float(row["s"]) if row else None
+
     def count_sent_today(self, account: str, module: str = "inviter") -> int:
         """Сколько действий module аккаунт совершил сегодня (дневные лимиты)."""
         with self._lock:

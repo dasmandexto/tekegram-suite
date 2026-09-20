@@ -20,6 +20,16 @@
   вариант; поддерживаются вложенность (`{привет|здравствуйте, {друг|приятель}}`)
   и экранирование `\{`. Количество комбинаций проверяется до отправки, в вебе
   есть кнопка «Спинтакс: варианты» для предпросмотра.
+- **autoresponder** — автоответы по правилам `триггер|ответ` из
+  `data/autoresponder.txt` (пустой триггер = на любое сообщение): кулдаун на
+  диалог (`--cooldown`, персистентный), анти-петля (не отвечает ботам и себе,
+  реагирует только на входящие), по умолчанию только ЛС (`--chat @группа`
+  добавляет диалог), спинтакс в ответах, `--duration` — время работы.
+- **phonechecker** — проверка номеров на регистрацию в Telegram через импорт
+  контактов (`ImportContactsRequest`, без SMS): нормализация к E.164
+  (включая 8XXXXXXXXXX → +7), батчи по 100, импортированные контакты сразу
+  удаляются (`DeleteContactsRequest`), `FloodWaitError` → пауза по серверу;
+  результат `data/checked_numbers_<дата>.txt`.
 - **web** — локальный веб-интерфейс в браузере (FastAPI + uvicorn).
 - Каркас для новых модулей: парсер, инвайтер, клонер чатов, автоответчик и т.д.
 
@@ -71,9 +81,10 @@ API (JSON) — те же функции, что и у CLI: `/api/overview`, `/ap
 `/api/broadcast/state`, `/api/broadcast/preview`, `/api/broadcast/send`,
 `/api/broadcast/unsubscribe`, `/api/spintax/preview`,
 `/api/parser/run`, `/api/inviter/run`, `/api/cloner/run`,
+`/api/autoresponder/run`, `/api/phonechecker/run`,
 `/api/tasks/{id}` (статус фоновой задачи).
 
-### Парсер, инвайтер, клонер (кратко)
+### Парсер, инвайтер, клонер, автоответчик, чекер номеров (кратко)
 
 ```bash
 # парсер: участники или активность, результат в data/parsed_<источник>_<дата>.txt
@@ -86,6 +97,13 @@ python -m cli inviter @my_chat --file ... --send
 
 # клонер: мета (название/описание/аватар) + история; карта id = идемпотентность
 python -m cli cloner @source @target --history 100 --send --replace "старая_ссылка=новая"
+
+# автоответчик: правила data/autoresponder.txt (триггер|ответ), кулдаун, анти-петля
+python -m cli autoresponder --duration 3600          # час, потом стоп
+python -m cli autoresponder --chat @my_chat --cooldown 60
+
+# чекер номеров: без SMS, через импорт контактов (контакты сразу удаляются)
+python -m cli phonechecker --file numbers.txt --batch 100
 ```
 
 Инвайтер обрабатывает реальные ошибки Telegram: `FloodWaitError`/`PeerFloodError`
@@ -137,9 +155,8 @@ api_id, api_hash) — вся инфраструктура уже готова.
 | Парсер аудитории             | `plugins/parser.py` — готов (members/activity, батчи по 200) |
 | Инвайтер                     | `plugins/inviter.py` — готов (лимиты в день, дедуп, dry-run) |
 | Клонер чатов                 | `plugins/cloner.py` — готов (мета+история, карта id, замены) |
-| Автоответчик                 | `plugins/autoresponder.py` — TODO |
-| Заполнение профилей          | `plugins/profiler.py` — TODO |
-| Чекер номеров                | TODO                         |
+| Автоответчик                 | `plugins/autoresponder.py` — готов (кулдаун, анти-петля) |
+| Чекер номеров                | `plugins/phone_checker.py` — готов (E.164, батчи, без SMS) |
 | Конвертер tdata → session    | TODO                         |
 
 ## Публикация на GitHub

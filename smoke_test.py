@@ -157,7 +157,55 @@ with tempfile.TemporaryDirectory() as td:
     mp.write_text("{битый json", encoding="utf-8")
     check("cloner: битая карта -> пустая", load_map(mp) == {})
 
-# ---- 10. Поведение без API-кредов ----
+# ---- 10. Автоответчик и чекер номеров (без сети: хелперы) ----
+from plugins.autoresponder import parse_rules, rule_matches
+from plugins.phone_checker import chunked, normalize_phone, parse_numbers
+
+with tempfile.TemporaryDirectory() as td:
+    rf = _Path(td) / "rules.txt"
+    rf.write_text(
+        "# правила\nпрайс|Цена: 100\u20bd\n|{Здравствуйте|Привет}!\n\nбитая строка\n",
+        encoding="utf-8",
+    )
+    rules = parse_rules(rf)
+    check("autoresponder: правила", rules == [("прайс", "Цена: 100\u20bd"), ("", "{Здравствуйте|Привет}!")])
+    check("autoresponder: триггер", rule_matches("прайс", "А какая ПРАЙС?"))
+    check("autoresponder: пустой триггер матчит всё", rule_matches("", "что угодно"))
+    check("autoresponder: не-триггер", not rule_matches("прайс", "привет"))
+    try:
+        parse_rules(_Path(td) / "nope.txt")
+        check("autoresponder: нет файла -> ошибка", False)
+    except ValueError:
+        check("autoresponder: нет файла -> ошибка", True)
+
+check("phonechecker: E.164", normalize_phone("+7 (999) 123-45-67") == "+79991234567")
+check("phonechecker: 8 -> +7", normalize_phone("89991234567") == "+79991234567")
+check("phonechecker: мусор", normalize_phone("привет") is None)
+check("phonechecker: слишком короткий", normalize_phone("12345") is None)
+with tempfile.TemporaryDirectory() as td:
+    nf = _Path(td) / "nums.txt"
+    nf.write_text("+79991234567\n89991234567\n# коммент\nмусор\n\n", encoding="utf-8")
+    nums = parse_numbers(nf)
+    check("phonechecker: файл + дедуп", nums == ["+79991234567"], f"({nums})")
+    check("phonechecker: батчи", chunked([1, 2, 3, 4, 5], 2) == [[1, 2], [3, 4], [5]])
+    try:
+        parse_numbers(_Path(td) / "nope.txt")
+        check("phonechecker: нет файла -> ошибка", False)
+    except ValueError:
+        check("phonechecker: нет файла -> ошибка", True)
+
+# кулдаун автоответчика в хранилище
+with tempfile.TemporaryDirectory() as td:
+    from core.storage import Storage
+
+    st2 = Storage(_Path(td) / "app.db")
+    check("autoresponder: кулдаун None до ответа", st2.seconds_since("acc", "autoresponder", "123") is None)
+    st2.mark_sent("acc", "123", "autoresponder")
+    sec = st2.seconds_since("acc", "autoresponder", "123")
+    check("autoresponder: кулдаун считается", sec is not None and sec < 5, f"({sec})")
+    st2.close()
+
+# ---- 11. Поведение без API-кредов ----
 with tempfile.TemporaryDirectory() as td:
     env = Path(td) / ".env"
     env.write_text(f"SESSIONS_DIR={td}/sessions\nDB_PATH={td}/data/app.db\n", encoding="utf-8")
